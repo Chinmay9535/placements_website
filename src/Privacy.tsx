@@ -1,6 +1,6 @@
 import { Nav } from './components/ui';
 
-const REPO = 'https://github.com/Chinmay9535/placements_website';
+const WHATSAPP_URL = 'https://chat.whatsapp.com/Cmz2kYJEMv9EpmjunbgIYL';
 
 export default function Privacy() {
   return (
@@ -51,15 +51,16 @@ export default function Privacy() {
 
           <h2>Deleting your data</h2>
           <p>
-            To have your account and messages removed, open an issue on the{' '}
-            <a href={`${REPO}/issues`} target="_blank" rel="noreferrer">project's GitHub page</a> asking for deletion and
-            mentioning your alias (don't post your email publicly). We'll delete the account, which also deletes everything
-            linked to it. You can also revoke the site's access at any time from your Google account's security settings.
+            To have your account and messages removed, ask a moderator (anyone with the MOD tag) in{' '}
+            <a href="/#tea">placemenTEA</a> or in the <a href={WHATSAPP_URL} target="_blank" rel="noreferrer">WhatsApp group</a>,
+            mentioning your alias. Don't post your email. We'll delete the account, which also deletes everything linked to
+            it. You can also revoke the site's access at any time from your Google account's security settings.
           </p>
 
           <h2>Contact</h2>
           <p>
-            Questions or concerns: <a href={`${REPO}/issues`} target="_blank" rel="noreferrer">GitHub issues</a>.
+            Questions or concerns: message a moderator in <a href="/#tea">placemenTEA</a> or the{' '}
+            <a href={WHATSAPP_URL} target="_blank" rel="noreferrer">WhatsApp group</a>.
           </p>
           <p style={{ marginTop: 32 }}><a className="btn dark" href="/">Back to the site</a></p>
         </article>

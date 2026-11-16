@@ -8,7 +8,6 @@ import { CompanySheet } from './components/CompanySheet';
 import { SubmitDrive } from './components/SubmitDrive';
 import { Tea } from './components/Tea';
 
-const REPO_URL = 'https://github.com/Chinmay9535/placements_website';
 const WHATSAPP_URL = 'https://chat.whatsapp.com/Cmz2kYJEMv9EpmjunbgIYL';
 
 type Sort = 'latest' | 'ctc' | 'stipend' | 'intake' | 'az';
@@ -451,9 +450,9 @@ export default function Home() {
               <Icon name="sheet" size={26} />
               <span><span className="k">The raw data</span><br /><span className="v">Open the sheet</span></span>
             </a>
-            <a href={REPO_URL} target="_blank" rel="noreferrer">
-              <Icon name="git" size={26} />
-              <span><span className="k">Source code</span><br /><span className="v">GitHub repo</span></span>
+            <a href="#tea">
+              <Icon name="chat" size={26} />
+              <span><span className="k">Talk to the batch</span><br /><span className="v">placemenTEA</span></span>
             </a>
           </div>
           <p className="disclaimer">
