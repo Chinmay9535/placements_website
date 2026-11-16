@@ -1,0 +1,21 @@
+# Render Blueprint — static site. Supabase keys are set as env vars in the Render dashboard.
+services:
+  - type: web
+    runtime: static
+    name: bmsit-placements-27
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
