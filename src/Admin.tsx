@@ -5,7 +5,8 @@ import { fetchSheetRows, OUTCOMES, type Experience, type Submission } from './li
 import type { CompanyRow } from './lib/parse';
 import { Modal, Nav, timeAgo } from './components/ui';
 
-type Tab = 'drives' | 'submissions' | 'experiences' | 'sync';
+type Tab = 'drives' | 'submissions' | 'experiences' | 'chat' | 'sync';
+type ChatMsg = { id: number; alias: string; body: string; created_at: string };
 const blank: CompanyRow = { name: '', date_raw: '', role: '', ctc_raw: '', intake_raw: '', rounds: '', details: '', position: 0 };
 
 export default function Admin() {
@@ -79,17 +80,23 @@ function Dashboard({ email }: { email: string }) {
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [subs, setSubs] = useState<Submission[]>([]);
   const [exps, setExps] = useState<Experience[]>([]);
+  const [chat, setChat] = useState<ChatMsg[]>([]);
+  const [banned, setBanned] = useState<string[]>([]);
   const [editing, setEditing] = useState<CompanyRow | null>(null);
   const [fromSub, setFromSub] = useState<string | null>(null);
   const [q, setQ] = useState('');
 
   const reload = useCallback(async () => {
     const sb = supabase!;
-    const [c, s, x] = await Promise.all([
+    const [c, s, x, m, b] = await Promise.all([
       sb.from('companies').select('*').order('position', { ascending: false }),
       sb.from('submissions').select('*').order('created_at', { ascending: false }).limit(200),
       sb.from('experiences').select('*').order('created_at', { ascending: false }).limit(200),
+      sb.from('chat_messages').select('*').order('id', { ascending: false }).limit(200),
+      sb.rpc('admin_banned_aliases'),
     ]);
+    setChat((m.data ?? []) as ChatMsg[]);
+    setBanned(((b.data ?? []) as unknown[]).map((r) => (typeof r === 'string' ? r : Object.values(r as object)[0] as string)));
     setCompanies((c.data ?? []) as CompanyRow[]);
     setSubs((s.data ?? []) as Submission[]);
     setExps((x.data ?? []) as Experience[]);
@@ -114,6 +121,19 @@ function Dashboard({ email }: { email: string }) {
     reload();
   }
 
+  async function delChat(id: number) {
+    if (!confirm('Delete this message?')) return;
+    await supabase!.from('chat_messages').delete().eq('id', id);
+    reload();
+  }
+  async function ban(alias: string, on: boolean) {
+    if (on && !confirm(`Ban "${alias}" from posting?`)) return;
+    const purge = on && confirm(`Also delete all of ${alias}'s messages?`);
+    const { error } = await supabase!.rpc('admin_set_chat_ban', { p_alias: alias, p_banned: on, p_purge: purge });
+    if (error) alert(error.message);
+    reload();
+  }
+
   const shown = companies.filter((c) => !q || c.name.toLowerCase().includes(q.toLowerCase()));
 
   return (
@@ -129,6 +149,7 @@ function Dashboard({ email }: { email: string }) {
         <button aria-pressed={tab === 'drives'} onClick={() => setTab('drives')}>Drives ({companies.length})</button>
         <button aria-pressed={tab === 'submissions'} onClick={() => setTab('submissions')}>Submissions ({pending.length})</button>
         <button aria-pressed={tab === 'experiences'} onClick={() => setTab('experiences')}>Experiences ({exps.length})</button>
+        <button aria-pressed={tab === 'chat'} onClick={() => setTab('chat')}>placemenTEA ({chat.length})</button>
         <button aria-pressed={tab === 'sync'} onClick={() => setTab('sync')}>Sync sheet</button>
       </div>
 
@@ -198,6 +219,33 @@ function Dashboard({ email }: { email: string }) {
               </div>
               <div className="v" style={{ fontSize: 14, marginTop: 6 }}>{x.body}</div>
               <button className="btn sm ghost" style={{ marginTop: 10 }} onClick={() => delExp(x.id)}>Delete</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'chat' && (
+        <div className="panel">
+          <h3>Banned aliases</h3>
+          {banned.length === 0 ? <p className="note">Nobody is banned.</p> : (
+            <div className="admin-actions" style={{ marginBottom: 16 }}>
+              {banned.map((a) => <button key={a} className="btn sm ghost" onClick={() => ban(a, false)} title="Unban">{a} ✕</button>)}
+            </div>
+          )}
+          <h3 style={{ marginTop: 20 }}>Latest 200 messages</h3>
+          <p className="desc">You only see aliases. Banning blocks that account from posting; it can still read.</p>
+          {chat.length === 0 && <p className="note">No messages yet.</p>}
+          {chat.map((m) => (
+            <div className="block" key={m.id} style={{ background: 'var(--paper)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                <b>{m.alias}{banned.includes(m.alias) && <span className="tag bad" style={{ marginLeft: 8 }}>banned</span>}</b>
+                <span className="note">{timeAgo(m.created_at)}</span>
+              </div>
+              <div className="v" style={{ fontSize: 14, marginTop: 6 }}>{m.body}</div>
+              <div className="admin-actions" style={{ marginTop: 10 }}>
+                <button className="btn sm ghost" onClick={() => delChat(m.id)}>Delete</button>
+                {!banned.includes(m.alias) && <button className="btn sm ghost" onClick={() => ban(m.alias, true)}>Ban alias</button>}
+              </div>
             </div>
           ))}
         </div>

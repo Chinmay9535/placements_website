@@ -268,6 +268,65 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .outcome.ghosted { background: var(--lav); color: var(--lav-ink); }
 .outcome.in-process { background: #fbefd2; color: var(--warn); }
 
+/* ───────── placemenTEA ───────── */
+.frame.tea { background: var(--ink); color: var(--paper); }
+.frame.tea .h2 { color: var(--paper); text-transform: none; }
+.frame.tea .h2 em { color: var(--lav-deep); }
+.frame.tea .aside-italic { color: var(--paper); }
+.frame.tea .aside-italic small { color: rgba(244, 244, 244, 0.6); }
+.tea-grid { display: grid; grid-template-columns: 300px 1fr; gap: 14px; }
+.tea-side { background: #2f1d1d; border-radius: var(--radius-lg); padding: 22px; display: flex; flex-direction: column; gap: 16px; }
+.tea-cup svg .steam { fill: none; stroke: rgba(227, 226, 247, 0.6); stroke-width: 2.4; stroke-linecap: round; animation: steam 2.6s ease-in-out infinite; }
+.tea-cup svg .s2 { animation-delay: 0.5s; } .tea-cup svg .s3 { animation-delay: 1s; }
+@keyframes steam { 0%, 100% { opacity: 0.2; transform: translateY(2px); } 50% { opacity: 1; transform: translateY(-2px); } }
+.tea-online { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(244, 244, 244, 0.75); }
+.tea-online .dot { width: 8px; height: 8px; border-radius: 50%; background: #6fd27c; box-shadow: 0 0 0 4px rgba(111, 210, 124, 0.18); }
+.tea-me { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.tea-me .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(244, 244, 244, 0.55); }
+.tea-alias-pill { display: inline-flex; align-items: center; gap: 10px; background: var(--lav); color: var(--ink); border-radius: 999px; padding: 6px 16px 6px 6px; font-weight: 500; }
+.tea-note { font-size: 13px; color: rgba(244, 244, 244, 0.7); margin: 0; }
+.tea-note b { color: var(--paper); }
+.tea-link { background: none; border: 0; padding: 0; color: rgba(244, 244, 244, 0.7); text-decoration: underline; cursor: pointer; font-size: 13px; }
+.btn.light { color: var(--ink); }
+.btn.google { gap: 10px; }
+.tea-rules { margin: 0; padding: 16px 0 0 18px; border-top: 1px solid rgba(244, 244, 244, 0.12); font-size: 13px; color: rgba(244, 244, 244, 0.7); display: flex; flex-direction: column; gap: 8px; }
+.av { width: 34px; height: 34px; border-radius: 50%; display: inline-grid; place-items: center; color: var(--ink); font-size: 12px; font-weight: 700; flex: none; }
+.tea-chat { background: #2a1919; border-radius: var(--radius-lg); display: flex; flex-direction: column; height: 620px; overflow: hidden; }
+.tea-list { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 4px; overscroll-behavior: contain; scrollbar-color: rgba(244,244,244,.2) transparent; }
+.tea-older { display: flex; justify-content: center; margin-bottom: 10px; }
+.tea-older .chip { color: var(--paper); border-color: rgba(244, 244, 244, 0.3); }
+.tea-older .chip:hover { background: rgba(244, 244, 244, 0.1); }
+.tea-empty { margin: auto; color: rgba(244, 244, 244, 0.6); text-align: center; padding: 40px; }
+.tea-msg { display: flex; gap: 10px; align-items: flex-end; max-width: 78%; min-width: 0; margin-top: 10px; }
+.tea-msg.grouped { margin-top: 0; }
+.tea-msg.mine { align-self: flex-end; flex-direction: row-reverse; }
+.tea-bubble-wrap { display: flex; flex-direction: column; gap: 3px; min-width: 0; position: relative; }
+.tea-msg.mine .tea-bubble-wrap { align-items: flex-end; }
+.tea-meta { font-size: 12px; color: rgba(244, 244, 244, 0.55); padding: 0 4px; }
+.tea-meta b { color: rgba(244, 244, 244, 0.9); font-weight: 500; margin-right: 4px; }
+.tea-bubble { max-width: 100%; min-width: 0; overflow: hidden; background: #3b2828; color: var(--paper); padding: 9px 14px; border-radius: 18px 18px 18px 6px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.tea-msg.mine .tea-bubble { background: var(--lav); color: var(--ink); border-radius: 18px 18px 6px 18px; }
+.tea-bubble a { color: inherit; }
+.tea-quote { font-size: 12.5px; opacity: 0.75; border-left: 2px solid currentColor; padding-left: 8px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: min(420px, 100%); }
+.tea-reply { position: absolute; top: 50%; right: -54px; transform: translateY(-20%); background: none; border: 0; color: rgba(244, 244, 244, 0.55); font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.15s; padding: 4px; }
+.tea-msg.mine .tea-reply { right: auto; left: -54px; }
+.tea-msg:hover .tea-reply, .tea-reply:focus-visible { opacity: 1; }
+.tea-reply:hover { color: var(--paper); text-decoration: underline; }
+.tea-compose { border-top: 1px solid rgba(244, 244, 244, 0.1); padding: 12px 14px 8px; display: flex; flex-direction: column; gap: 8px; }
+.tea-input-row { display: flex; gap: 10px; align-items: flex-end; }
+.tea-input-row textarea { flex: 1; resize: none; background: #3b2828; color: var(--paper); border: 1.5px solid transparent; border-radius: 22px; padding: 11px 16px; outline: 0; max-height: 140px; min-height: 46px; field-sizing: content; }
+.tea-input-row textarea:focus { border-color: var(--lav-deep); }
+.tea-input-row textarea::placeholder { color: rgba(244, 244, 244, 0.45); }
+.tea-send { width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--lav); color: var(--ink); cursor: pointer; display: grid; place-items: center; flex: none; transition: transform 0.15s; }
+.tea-send:hover:not(:disabled) { transform: scale(1.06); }
+.tea-send:disabled { opacity: 0.4; cursor: not-allowed; }
+.tea-count { font-size: 11px; color: rgba(244, 244, 244, 0.4); text-align: right; }
+.tea-replying { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: rgba(244, 244, 244, 0.75); background: #3b2828; border-radius: 12px; padding: 6px 10px; }
+.tea-replying span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tea-replying button { background: none; border: 0; color: inherit; cursor: pointer; display: grid; place-items: center; }
+.tea-err { color: #ffb4ab; font-size: 13px; }
+.tea-locked { border-top: 1px solid rgba(244, 244, 244, 0.1); padding: 18px; text-align: center; font-size: 14px; color: rgba(244, 244, 244, 0.7); }
+
 /* ───────── footer (geometric) ───────── */
 .footer { background: var(--page); border-radius: var(--radius-xl); position: relative; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.5); }
 .footer-art { position: absolute; inset: 0; pointer-events: none; }
@@ -358,10 +417,19 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .why-card { min-height: 180px; }
   .footer-links { grid-template-columns: 1fr; }
   .footer-pills { position: static; justify-content: flex-start; margin-bottom: 24px; }
+  .tea-grid { grid-template-columns: 1fr; }
+  .tea-rules { display: none; }
 }
 @media (max-width: 720px) {
   .nav-links { display: none; }
   .chip-divider { display: none; }
+  .tea-chat { height: 560px; }
+  .tea-cup { display: none; }
+  .tea-side { padding: 16px; gap: 12px; }
+  .tea-list { padding: 14px; }
+  .tea-msg { max-width: 92%; }
+  .tea-reply { position: static; opacity: 1; transform: none; align-self: flex-start; padding: 0 4px; }
+  .tea-msg.mine .tea-reply { align-self: flex-end; }
   .kv { grid-template-columns: 1fr 1fr; }
   .form .two { grid-template-columns: 1fr; }
   .aside-italic { text-align: left; }

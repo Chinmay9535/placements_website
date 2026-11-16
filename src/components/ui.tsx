@@ -26,6 +26,7 @@ export function Nav({ onSubmit, admin }: { onSubmit?: () => void; admin?: boolea
           <a href="#drives">Drives</a>
           <a href="#insights">Insights</a>
           <a href="#experiences">Experiences</a>
+          <a href="#tea">placemenTEA</a>
         </div>
       )}
       {onSubmit && (

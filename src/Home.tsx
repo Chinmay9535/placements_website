@@ -6,6 +6,7 @@ import { Icon, Nav, Squiggle, TagList, timeAgo, useReveal } from './components/u
 import { BarChart } from './components/BarChart';
 import { CompanySheet } from './components/CompanySheet';
 import { SubmitDrive } from './components/SubmitDrive';
+import { Tea } from './components/Tea';
 
 const REPO_URL = 'https://github.com/Chinmay9535/placements_website';
 
@@ -351,8 +352,8 @@ export default function Home() {
               <Squiggle style={{ right: -420, top: -110, opacity: 0.3, transform: 'rotate(-20deg)' }} width={700} />
               <span className="ico"><Icon name="users" /></span>
               <div>
-                <h3>Free, no<br />login, ever</h3>
-                <p>No sign-ups, no paywall, no "premium prep". Read it, post anonymously, move on.</p>
+                <h3>Free, no login<br />to read</h3>
+                <p>No paywall, no "premium prep". Login only to chat on placemenTEA, and even then you're a random alias.</p>
               </div>
             </div>
             <div className="why-card sage">
@@ -403,6 +404,20 @@ export default function Home() {
               <a className="btn dark" href="#drives">Pick a company</a>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* ───────── placemenTEA ───────── */}
+      <section className="frame tea" id="tea">
+        <div className="inner">
+          <div className="section-head">
+            <h2 className="h2">placemen<em>TEA</em></h2>
+            <div className="aside-italic">
+              Spill it.<br />Anonymously.
+              <small>Live chat for the batch. Random aliases, college login only.</small>
+            </div>
+          </div>
+          <Tea />
         </div>
       </section>
 

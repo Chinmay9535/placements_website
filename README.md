@@ -22,7 +22,7 @@ npm run dev
 ```
 
 ## Supabase setup (one time)
-1. Create a project, then in **SQL Editor** paste and run `supabase/setup.sql` (= `schema.sql` + `seed.sql`).
+1. Create a project, then in **SQL Editor** paste and run `supabase/setup.sql` (= `schema.sql` + `chat.sql` + `seed.sql`).
 2. **Authentication → Users → Add user**: create your admin login (email + password, auto-confirm).
 3. Run `insert into public.admins (email) values ('you@example.com');`
 4. Put `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Project Settings → API) in Render's env vars and redeploy.
