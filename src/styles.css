@@ -325,6 +325,9 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tea-replying span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tea-replying button { background: none; border: 0; color: inherit; cursor: pointer; display: grid; place-items: center; }
 .tea-err { color: #ffb4ab; font-size: 13px; }
+.mod-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #c9d0a6; color: var(--ink); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; vertical-align: 1px; }
+.tea-msg.mod:not(.mine) .tea-bubble { background: #3a3a28; box-shadow: inset 0 0 0 1.5px rgba(201, 208, 166, 0.55); }
+.tea-msg.mod.mine .tea-bubble { box-shadow: inset 0 0 0 2px #c9d0a6; }
 .tea-locked { border-top: 1px solid rgba(244, 244, 244, 0.1); padding: 18px; text-align: center; font-size: 14px; color: rgba(244, 244, 244, 0.7); }
 
 /* ───────── footer (geometric) ───────── */

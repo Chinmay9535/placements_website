@@ -167,14 +167,16 @@ grant execute on function public.sync_sheet(jsonb) to authenticated;
 --  * chat_authors links message → account. No policies, so nobody can read it through the API;
 --    only security-definer functions use it (rate limits, bans).
 --  * Posting requires a Google login with an @bmsit.in address, checked here in the database.
+--    Admins (public.admins) may chat from any account; their messages carry is_admin = true (MOD tag).
 
 -- ───────── who may chat ─────────
 create or replace function public.chat_email_ok()
 returns boolean
 language sql stable
 as $$
-  select coalesce(lower(auth.jwt() ->> 'email'), '') like '%@bmsit.in'
-     and coalesce(auth.jwt() -> 'app_metadata' ->> 'provider', '') = 'google';
+  select (coalesce(lower(auth.jwt() ->> 'email'), '') like '%@bmsit.in'
+          and coalesce(auth.jwt() -> 'app_metadata' ->> 'provider', '') = 'google')
+      or public.is_admin();
 $$;
 
 -- ───────── aliases ─────────
@@ -192,8 +194,10 @@ create table if not exists public.chat_messages (
   alias      text not null,
   body       text not null check (char_length(body) between 1 and 500),
   reply_to   bigint references public.chat_messages(id) on delete set null,
+  is_admin   boolean not null default false,
   created_at timestamptz not null default now()
 );
+alter table public.chat_messages add column if not exists is_admin boolean not null default false;
 create index if not exists chat_messages_created_idx on public.chat_messages (created_at desc);
 alter table public.chat_messages enable row level security;
 
@@ -248,7 +252,7 @@ begin
       end;
     end loop;
   end if;
-  return json_build_object('alias', p.alias, 'banned', p.banned);
+  return json_build_object('alias', p.alias, 'banned', p.banned, 'is_admin', public.is_admin());
 end;
 $$;
 
@@ -279,7 +283,8 @@ begin
     p_reply_to := null;
   end if;
 
-  insert into public.chat_messages (alias, body, reply_to) values (prof.alias, txt, p_reply_to) returning * into msg;
+  insert into public.chat_messages (alias, body, reply_to, is_admin)
+  values (prof.alias, txt, p_reply_to, public.is_admin()) returning * into msg;
   insert into public.chat_authors (message_id, user_id) values (msg.id, uid);
   return msg;
 end;

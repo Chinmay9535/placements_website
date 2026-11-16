@@ -3,8 +3,8 @@ import type { Session } from '@supabase/supabase-js';
 import { CHAT_DOMAIN, supabase } from '../lib/supabase';
 import { Icon } from './ui';
 
-type Msg = { id: number; alias: string; body: string; reply_to: number | null; created_at: string };
-type Profile = { alias: string; banned: boolean };
+type Msg = { id: number; alias: string; body: string; reply_to: number | null; is_admin?: boolean; created_at: string };
+type Profile = { alias: string; banned: boolean; is_admin?: boolean };
 
 const PAGE = 60;
 const RETURN_KEY = 'tea:return';
@@ -12,10 +12,7 @@ const AVATAR_BG = ['#e3e2f7', '#e2e6cf', '#f2cfcf', '#d4ecf7', '#c7c4ee', '#c9d0
 
 const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7);
 const initials = (alias: string) => alias.split(' ').slice(0, 2).map((w) => w[0]).join('');
-const emailOk = (s: Session | null) => {
-  const e = s?.user.email?.toLowerCase() ?? '';
-  return e.endsWith(`@${CHAT_DOMAIN}`) && s?.user.app_metadata?.provider === 'google';
-};
+const ModTag = () => <span className="mod-tag" title="Moderator">MOD</span>;
 
 function clock(iso: string) {
   const d = new Date(iso);
@@ -49,6 +46,7 @@ export function Tea() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(0);
+  const [notAllowed, setNotAllowed] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -62,10 +60,18 @@ export function Tea() {
   }, []);
 
   useEffect(() => {
-    if (!supabase || !session || !emailOk(session)) return setProfile(null);
+    setNotAllowed(false);
+    if (!supabase || !session) return setProfile(null);
+    // The database decides who may chat: @bmsit.in Google accounts, or anyone on the admin list.
     supabase.rpc('my_chat_profile').then(({ data, error }) => {
-      if (error) setErr(errText(error));
-      else setProfile(data as Profile);
+      if (error) {
+        setProfile(null);
+        if (/bmsit\.in/i.test(error.message)) setNotAllowed(true);
+        else setErr(errText(error));
+      } else {
+        setErr('');
+        setProfile(data as Profile);
+      }
     });
     try {
       if (localStorage.getItem(RETURN_KEY)) {
@@ -176,7 +182,7 @@ export function Tea() {
   };
 
   const byId = new Map((msgs ?? []).map((m) => [m.id, m]));
-  const wrongAccount = session && !emailOk(session);
+  const wrongAccount = Boolean(session && notAllowed);
   const canChat = Boolean(profile && !profile.banned);
 
   return (
@@ -201,6 +207,7 @@ export function Tea() {
             <div className="tea-alias-pill">
               <span className="av" style={{ background: AVATAR_BG[Math.abs(hash(profile!.alias)) % AVATAR_BG.length] }}>{initials(profile!.alias)}</span>
               {profile!.alias}
+              {profile!.is_admin && <ModTag />}
             </div>
             <button className="tea-link" onClick={() => supabase!.auth.signOut()}>Sign out</button>
           </div>
@@ -255,7 +262,7 @@ export function Tea() {
               const grouped = prev && prev.alias === m.alias && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000 && !m.reply_to;
               const parent = m.reply_to ? byId.get(m.reply_to) : null;
               return (
-                <div key={m.id} className={`tea-msg${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}`}>
+                <div key={m.id} className={`tea-msg${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}${m.is_admin ? ' mod' : ''}`}>
                   {!mine && (
                     <span className="av" style={{ background: AVATAR_BG[Math.abs(hash(m.alias)) % AVATAR_BG.length], visibility: grouped ? 'hidden' : 'visible' }}>
                       {initials(m.alias)}
@@ -264,13 +271,13 @@ export function Tea() {
                   <div className="tea-bubble-wrap">
                     {!grouped && (
                       <div className="tea-meta">
-                        <b>{mine ? 'You' : m.alias}</b> <span>{clock(m.created_at)}</span>
+                        <b>{mine ? 'You' : m.alias}</b>{m.is_admin && <ModTag />} <span>{clock(m.created_at)}</span>
                       </div>
                     )}
                     <div className="tea-bubble">
                       {m.reply_to && (
                         <div className="tea-quote">
-                          {parent ? <><b>{parent.alias}</b> {parent.body.slice(0, 90)}{parent.body.length > 90 ? '…' : ''}</> : <i>earlier message</i>}
+                          {parent ? <><b>{parent.alias}</b>{parent.is_admin && ' (MOD)'} {parent.body.slice(0, 90)}{parent.body.length > 90 ? '…' : ''}</> : <i>earlier message</i>}
                         </div>
                       )}
                       <Linkified text={m.body} />
