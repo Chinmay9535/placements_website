@@ -396,6 +396,12 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .marquee-item i { width: 6px; height: 6px; border-radius: 50%; background: var(--lav-deep); display: inline-block; }
 @keyframes marquee { to { transform: translateX(-50%); } }
 
+/* legal page */
+.legal { max-width: 760px; }
+.legal h2 { font-size: 22px; margin: 32px 0 8px; }
+.legal p, .legal li { font-size: 16px; line-height: 1.65; color: var(--ink-2); }
+.legal ul { padding-left: 20px; }
+
 /* admin */
 .admin-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .admin-table th, .admin-table td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }

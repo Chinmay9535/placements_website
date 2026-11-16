@@ -451,7 +451,7 @@ export default function Home() {
           </div>
           <p className="disclaimer">
             Not affiliated with BMSIT&amp;M or its placement cell. Everything here is crowd-sourced and can be wrong or out of date —
-            always confirm with the official placement mail before you decide anything.
+            always confirm with the official placement mail before you decide anything. · <a href="/privacy">Privacy policy</a>
           </p>
         </div>
       </footer>
