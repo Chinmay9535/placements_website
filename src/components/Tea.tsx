@@ -325,6 +325,12 @@ export function Tea({ session, companyNames, upcomingNames }: { session: Session
   const wrongAccount = Boolean(session && notAllowed);
   const canChat = Boolean(profile && !profile.banned);
   const label = (s: string) => names.get(s) ?? s;
+  const openPicked = (s: string) => {
+    setOpened((o) => (o.includes(s) ? o : [s, ...o]));
+    setChannel(s);
+    setPicker(false);
+    setPickQ('');
+  };
   const pickList = useMemo(() => {
     const q = pickQ.trim().toLowerCase();
     return [...names.entries()].filter(([s, n]) => s !== 'general' && (!q || n.toLowerCase().includes(q))).slice(0, 8);
@@ -399,23 +405,30 @@ export function Tea({ session, companyNames, upcomingNames }: { session: Session
               {s !== channel && (unread[s] ?? 0) > 0 && <span className="tea-unread" aria-label="new messages" />}
             </button>
           ))}
-          <div className="tea-pick">
-            <button className="tea-ch add" onClick={() => setPicker((v) => !v)} aria-expanded={picker} aria-label="Open a company channel">+ company</button>
-            {picker && (
-              <div className="tea-pick-pop">
-                <input autoFocus value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder="Search company…" aria-label="Search company channel" />
-                {pickList.map(([s, n]) => (
-                  <button key={s} onClick={() => { setOpened((o) => (o.includes(s) ? o : [s, ...o])); setChannel(s); setPicker(false); setPickQ(''); }}>
-                    #{n.toLowerCase()}
-                  </button>
-                ))}
-                {pickList.length === 0 && <span className="tea-note">No match</span>}
-              </div>
-            )}
-          </div>
+          <button className="tea-ch add" onClick={() => setPicker((v) => !v)} aria-expanded={picker} aria-label="Open a company channel">+ company</button>
         </div>
 
-        <div className="tea-list" ref={listRef} onScroll={onScroll} aria-live="polite" aria-label={`#${label(channel)} messages`}>
+        {picker && (
+          <div className="tea-pick-pop" role="dialog" aria-label="Open a company channel">
+            <input
+              autoFocus
+              value={pickQ}
+              onChange={(e) => setPickQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setPicker(false);
+                if (e.key === 'Enter' && pickList[0]) openPicked(pickList[0][0]);
+              }}
+              placeholder="Search company…"
+              aria-label="Search company channel"
+            />
+            {pickList.map(([s, n]) => (
+              <button key={s} onClick={() => openPicked(s)}>#{n.toLowerCase()}</button>
+            ))}
+            {pickList.length === 0 && <span className="tea-note" style={{ padding: '6px 10px' }}>No match</span>}
+          </div>
+        )}
+
+        <div className="tea-list" ref={listRef} onScroll={onScroll} onMouseDown={() => setPicker(false)} aria-live="polite" aria-label={`#${label(channel)} messages`}>
           {hasOlder && (
             <div className="tea-older"><button className="chip" onClick={loadOlder}>Load older messages</button></div>
           )}
