@@ -7,7 +7,8 @@ import { Modal, Nav, timeAgo } from './components/ui';
 import { UpcomingEditor, UpcomingTab, type UpcomingDraft } from './components/UpcomingAdmin';
 
 type Tab = 'upcoming' | 'drives' | 'submissions' | 'experiences' | 'chat' | 'sync';
-type ChatMsg = { id: number; alias: string; body: string; created_at: string };
+type ChatMsg = { id: number; alias: string; body: string; channel?: string; hidden?: boolean; created_at: string };
+type Report = { message_id: number; channel: string; alias: string; body: string; hidden: boolean; reports: number; reasons: string[] | null; last_at: string };
 const blank: CompanyRow = { name: '', date_raw: '', role: '', ctc_raw: '', intake_raw: '', rounds: '', details: '', position: 0 };
 
 export default function Admin() {
@@ -83,6 +84,7 @@ function Dashboard({ email }: { email: string }) {
   const [exps, setExps] = useState<Experience[]>([]);
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [banned, setBanned] = useState<string[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
   const [editing, setEditing] = useState<CompanyRow | null>(null);
   const [fromSub, setFromSub] = useState<string | null>(null);
   const [upcoming, setUpcoming] = useState<Upcoming[]>([]);
@@ -91,14 +93,16 @@ function Dashboard({ email }: { email: string }) {
 
   const reload = useCallback(async () => {
     const sb = supabase!;
-    const [c, s, x, m, b, u] = await Promise.all([
+    const [c, s, x, m, b, u, r] = await Promise.all([
       sb.from('companies').select('*').order('position', { ascending: false }),
       sb.from('submissions').select('*').order('created_at', { ascending: false }).limit(200),
       sb.from('experiences').select('*').order('created_at', { ascending: false }).limit(200),
       sb.from('chat_messages').select('*').order('id', { ascending: false }).limit(200),
       sb.rpc('admin_banned_aliases'),
       sb.from('upcoming_drives').select('*'),
+      sb.rpc('admin_chat_reports'),
     ]);
+    setReports((r.data ?? []) as Report[]);
     setUpcoming((u.data ?? []) as Upcoming[]);
     setChat((m.data ?? []) as ChatMsg[]);
     setBanned(((b.data ?? []) as unknown[]).map((r) => (typeof r === 'string' ? r : Object.values(r as object)[0] as string)));
@@ -131,6 +135,13 @@ function Dashboard({ email }: { email: string }) {
     await supabase!.from('chat_messages').delete().eq('id', id);
     reload();
   }
+  async function resolve(id: number, action: 'dismiss' | 'delete') {
+    if (action === 'delete' && !confirm('Delete this message?')) return;
+    const { error } = await supabase!.rpc('admin_resolve_report', { p_message: id, p_action: action });
+    if (error) alert(error.message);
+    reload();
+  }
+
   async function ban(alias: string, on: boolean) {
     if (on && !confirm(`Ban "${alias}" from posting?`)) return;
     const purge = on && confirm(`Also delete all of ${alias}'s messages?`);
@@ -155,7 +166,7 @@ function Dashboard({ email }: { email: string }) {
         <button aria-pressed={tab === 'drives'} onClick={() => setTab('drives')}>Drives ({companies.length})</button>
         <button aria-pressed={tab === 'submissions'} onClick={() => setTab('submissions')}>Submissions ({pending.length})</button>
         <button aria-pressed={tab === 'experiences'} onClick={() => setTab('experiences')}>Experiences ({exps.length})</button>
-        <button aria-pressed={tab === 'chat'} onClick={() => setTab('chat')}>placemenTEA ({chat.length})</button>
+        <button aria-pressed={tab === 'chat'} onClick={() => setTab('chat')}>placemenTEA{reports.length ? ` · ${reports.length} reported` : ''}</button>
         <button aria-pressed={tab === 'sync'} onClick={() => setTab('sync')}>Sync sheet</button>
       </div>
 
@@ -238,7 +249,24 @@ function Dashboard({ email }: { email: string }) {
 
       {tab === 'chat' && (
         <div className="panel">
-          <h3>Banned aliases</h3>
+          <h3>Reported messages</h3>
+          {reports.length === 0 ? <p className="note">No reports. 🎉</p> : reports.map((r) => (
+            <div className="block" key={r.message_id} style={{ background: r.hidden ? '#fde1df' : 'var(--lav)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                <b>{r.alias} <span className="note">in #{r.channel}</span></b>
+                <span className="note">{r.reports} report{r.reports === 1 ? '' : 's'}{r.hidden ? ' · hidden from chat' : ''} · {timeAgo(r.last_at)}</span>
+              </div>
+              <div className="v" style={{ fontSize: 14, marginTop: 6 }}>{r.body}</div>
+              {r.reasons && r.reasons.length > 0 && <div className="note" style={{ marginTop: 6 }}>Reasons: {r.reasons.join(' · ')}</div>}
+              <div className="admin-actions" style={{ marginTop: 10 }}>
+                <button className="btn sm" onClick={() => resolve(r.message_id, 'dismiss')}>{r.hidden ? 'Restore & dismiss' : 'Dismiss reports'}</button>
+                <button className="btn sm ghost" onClick={() => resolve(r.message_id, 'delete')}>Delete message</button>
+                {!banned.includes(r.alias) && <button className="btn sm ghost" onClick={() => ban(r.alias, true)}>Ban alias</button>}
+              </div>
+            </div>
+          ))}
+
+          <h3 style={{ marginTop: 20 }}>Banned aliases</h3>
           {banned.length === 0 ? <p className="note">Nobody is banned.</p> : (
             <div className="admin-actions" style={{ marginBottom: 16 }}>
               {banned.map((a) => <button key={a} className="btn sm ghost" onClick={() => ban(a, false)} title="Unban">{a} ✕</button>)}
@@ -250,7 +278,7 @@ function Dashboard({ email }: { email: string }) {
           {chat.map((m) => (
             <div className="block" key={m.id} style={{ background: 'var(--paper)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                <b>{m.alias}{banned.includes(m.alias) && <span className="tag bad" style={{ marginLeft: 8 }}>banned</span>}</b>
+                <b>{m.alias} <span className="note">#{m.channel ?? 'general'}</span>{m.hidden && <span className="tag bad" style={{ marginLeft: 8 }}>hidden</span>}{banned.includes(m.alias) && <span className="tag bad" style={{ marginLeft: 8 }}>banned</span>}</b>
                 <span className="note">{timeAgo(m.created_at)}</span>
               </div>
               <div className="v" style={{ fontSize: 14, marginTop: 6 }}>{m.body}</div>

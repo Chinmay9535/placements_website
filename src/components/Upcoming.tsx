@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { calendarLink, countdown, isActive, loadUpcoming, localDate, nextEvent, type Upcoming as U } from '../lib/data';
+import { calendarLink, countdown, isActive, localDate, nextEvent, type Upcoming as U } from '../lib/data';
+import { openTeaChannel } from './Tea';
+import { supabase } from '../lib/supabase';
 import { fmtLpa, fmtStipend, parseMoney } from '../lib/parse';
 import { Icon } from './ui';
 
@@ -22,12 +24,10 @@ function DateTile({ u }: { u: U }) {
   );
 }
 
-export function Upcoming({ onSubmit }: { onSubmit: () => void }) {
-  const [items, setItems] = useState<U[] | null>(null);
+export function Upcoming({ items, onSubmit }: { items: U[] | null; onSubmit: () => void }) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    loadUpcoming().then(setItems);
     const t = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
@@ -97,6 +97,9 @@ export function Upcoming({ onSubmit }: { onSubmit: () => void }) {
                   <a className="btn sm ghost" href={cal} target="_blank" rel="noreferrer noopener">
                     Add to calendar
                   </a>
+                )}
+                {supabase && (
+                  <button className="btn sm ghost" onClick={() => openTeaChannel(u.name)}>#{u.name.trim().toLowerCase()}</button>
                 )}
               </div>
             </div>

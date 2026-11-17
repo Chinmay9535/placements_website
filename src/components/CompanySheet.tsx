@@ -3,6 +3,19 @@ import { ctcLabel, fmtStipend, type Company } from '../lib/parse';
 import { loadExperiences, OUTCOMES, throttled, type Experience } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { Modal, TagList, timeAgo } from './ui';
+import { ProgressPanel } from './Extras';
+import { openTeaChannel } from './Tea';
+import type { Counts, Stage } from '../lib/progress';
+import { setProgress } from '../lib/progress';
+import { errText, signInWithCollegeGoogle } from '../lib/auth';
+
+export type ProgressProps = {
+  counts?: Counts;
+  mine?: Stage;
+  canSet: boolean;
+  signedInWrong: boolean;
+  onChanged: () => void;
+};
 
 function Linkify({ text }: { text: string }) {
   const parts = text.split(/(https?:\/\/\S+)/g);
@@ -28,7 +41,21 @@ function Block({ k, children }: { k: string; children: ReactNode }) {
   );
 }
 
-export function CompanySheet({ c, onClose, onPosted }: { c: Company; onClose: () => void; onPosted?: () => void }) {
+export function CompanySheet({ c, onClose, onPosted, progress }: { c: Company; onClose: () => void; onPosted?: () => void; progress: ProgressProps }) {
+  const [pBusy, setPBusy] = useState(false);
+  const [pErr, setPErr] = useState('');
+  async function onSetStage(s: Stage | null) {
+    if (!c.id) return;
+    setPBusy(true);
+    setPErr('');
+    try {
+      await setProgress(c.id, s);
+      progress.onChanged();
+    } catch (e) {
+      setPErr(errText(e));
+    }
+    setPBusy(false);
+  }
   const [items, setItems] = useState<Experience[] | null>(null);
   const [body, setBody] = useState('');
   const [handle, setHandle] = useState('');
@@ -88,6 +115,25 @@ export function CompanySheet({ c, onClose, onPosted }: { c: Company; onClose: ()
       {c.rounds && <Block k="Rounds / status"><Linkify text={c.rounds} /></Block>}
       {c.details && <Block k="More details / eligibility"><Linkify text={c.details} /></Block>}
       {!c.hasInfo && <p className="note">Nobody has added details for this one yet. Went through it? Drop what you know below.</p>}
+
+      {c.id && supabase && (
+        <ProgressPanel
+          counts={progress.counts}
+          mine={progress.mine}
+          canSet={progress.canSet}
+          signedInWrong={progress.signedInWrong}
+          onSet={onSetStage}
+          onSignIn={() => signInWithCollegeGoogle('drives').catch((e) => setPErr(errText(e)))}
+          busy={pBusy}
+          err={pErr}
+        />
+      )}
+
+      {supabase && (
+        <button className="btn sm" style={{ marginTop: 6 }} onClick={() => { onClose(); setTimeout(() => openTeaChannel(c.name), 50); }}>
+          Discuss in #{c.name.trim().toLowerCase()} on placemenTEA →
+        </button>
+      )}
 
       <h3>Unfiltered experiences {items && items.length > 0 && <span className="note">({items.length})</span>}</h3>
       {canPost ? (

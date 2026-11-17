@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ctcLabel, enrich, fmtDate, fmtLpa, fmtStipend, TAGS, type Company, type TagKey } from './lib/parse';
-import { loadCompanies, loadExperienceCounts, loadRecentExperiences, OUTCOMES, type Experience } from './lib/data';
+import { loadCompanies, loadExperienceCounts, loadRecentExperiences, loadUpcoming, OUTCOMES, type Experience, type Upcoming as UpcomingT } from './lib/data';
+import { consumeAuthReturn, useSession } from './lib/auth';
+import { loadMyProgress, loadProgressCounts, type Counts, type Stage } from './lib/progress';
+import { CHAT_DOMAIN } from './lib/supabase';
+import { FunnelMini } from './components/Extras';
 import { SHEET_URL, supabase } from './lib/supabase';
 import { Icon, Nav, Squiggle, TagList, timeAgo, useReveal } from './components/ui';
 import { BarChart } from './components/BarChart';
@@ -11,7 +15,7 @@ import { Upcoming } from './components/Upcoming';
 
 const WHATSAPP_URL = 'https://chat.whatsapp.com/Cmz2kYJEMv9EpmjunbgIYL';
 
-type Sort = 'latest' | 'ctc' | 'stipend' | 'intake' | 'az';
+type Sort = 'latest' | 'ctc' | 'stipend' | 'intake' | 'applied' | 'az';
 type Band = 'any' | '8' | '12' | '16';
 const FILTER_TAGS: TagKey[] = ['internship', 'ppo', 'pbc', 'bond', 'apprentice', 'ghosted', 'stopped'];
 const PAGE = 24;
@@ -37,6 +41,32 @@ export default function Home() {
   const [sort, setSort] = useState<Sort>('latest');
   const [view, setView] = useState<'cards' | 'table'>('cards');
   const [limit, setLimit] = useState(PAGE);
+
+  const session = useSession();
+  const [upcoming, setUpcoming] = useState<UpcomingT[] | null>(null);
+  const [pCounts, setPCounts] = useState<Record<string, Counts>>({});
+  const [myStages, setMyStages] = useState<Record<string, Stage>>({});
+  const [canProgress, setCanProgress] = useState(false);
+
+  const refreshProgress = useCallback(() => {
+    loadProgressCounts().then(setPCounts);
+    if (session) loadMyProgress().then(setMyStages);
+    else setMyStages({});
+  }, [session]);
+  useEffect(refreshProgress, [refreshProgress]);
+
+  useEffect(() => {
+    loadUpcoming().then(setUpcoming);
+  }, []);
+
+  // who may add their applied/shortlisted/offer status: @bmsit.in Google accounts, or admins
+  useEffect(() => {
+    if (!session || !supabase) return setCanProgress(false);
+    consumeAuthReturn();
+    const e = session.user.email?.toLowerCase() ?? '';
+    if (e.endsWith(`@${CHAT_DOMAIN}`) && session.user.app_metadata?.provider === 'google') return setCanProgress(true);
+    supabase.rpc('is_admin').then(({ data }) => setCanProgress(Boolean(data)));
+  }, [session]);
 
   const refreshCommunity = useCallback(() => {
     loadExperienceCounts().then(setCounts);
@@ -89,9 +119,10 @@ export default function Home() {
     if (sort === 'ctc') list = [...list].sort((a, b) => nullsLast(b.ctcMax) - nullsLast(a.ctcMax));
     if (sort === 'stipend') list = [...list].sort((a, b) => nullsLast(b.stipendMax) - nullsLast(a.stipendMax));
     if (sort === 'intake') list = [...list].sort((a, b) => nullsLast(b.intake) - nullsLast(a.intake));
+    if (sort === 'applied') list = [...list].sort((a, b) => (pCounts[b.id ?? '']?.applied ?? 0) - (pCounts[a.id ?? '']?.applied ?? 0));
     if (sort === 'az') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
     return list;
-  }, [all, q, tags, band, sort]);
+  }, [all, q, tags, band, sort, pCounts]);
 
   useEffect(() => setLimit(PAGE), [q, tags, band, sort]);
 
@@ -125,6 +156,8 @@ export default function Home() {
 
   const topPay = useMemo(() => [...all].filter((c) => c.ctcMax != null).sort((a, b) => b.ctcMax! - a.ctcMax!).slice(0, 8), [all]);
   const latest = all.slice(0, 16);
+  const companyNames = useMemo(() => all.map((c) => c.name), [all]);
+  const upcomingNames = useMemo(() => (upcoming ?? []).map((u) => u.name), [upcoming]);
   const toggleTag = (t: TagKey) => setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
 
   return (
@@ -194,7 +227,7 @@ export default function Home() {
               <small>Announced drives with countdowns. Add them straight to your calendar.</small>
             </div>
           </div>
-          <Upcoming onSubmit={() => setSubmitting(true)} />
+          <Upcoming items={upcoming} onSubmit={() => setSubmitting(true)} />
         </div>
       </section>
 
@@ -248,6 +281,7 @@ export default function Home() {
                 <option value="ctc">Highest CTC</option>
                 <option value="stipend">Highest stipend</option>
                 <option value="intake">Most hires</option>
+                <option value="applied">Most applied (batch)</option>
                 <option value="az">A → Z</option>
               </select>
               <div className="seg" role="group" aria-label="View">
@@ -286,10 +320,10 @@ export default function Home() {
             <div className="empty">Nothing matches. Loosen a filter, or <button className="chip" onClick={() => setSubmitting(true)}>add the drive yourself</button></div>
           ) : view === 'cards' ? (
             <div className="grid">
-              {filtered.slice(0, limit).map((c) => <DriveCard key={c.key} c={c} n={counts[c.id ?? ''] ?? 0} onOpen={setOpen} />)}
+              {filtered.slice(0, limit).map((c) => <DriveCard key={c.key} c={c} n={counts[c.id ?? ''] ?? 0} onOpen={setOpen} funnel={pCounts[c.id ?? '']} />)}
             </div>
           ) : (
-            <DriveTable list={filtered.slice(0, limit)} counts={counts} onOpen={setOpen} />
+            <DriveTable list={filtered.slice(0, limit)} counts={counts} onOpen={setOpen} funnels={pCounts} />
           )}
           {filtered.length > limit && (
             <div className="more-row">
@@ -438,7 +472,7 @@ export default function Home() {
               <small>Live chat for the batch. Random aliases, college login only.</small>
             </div>
           </div>
-          <Tea />
+          <Tea session={session} companyNames={companyNames} upcomingNames={upcomingNames} />
         </div>
       </section>
 
@@ -477,13 +511,26 @@ export default function Home() {
         </div>
       </footer>
 
-      {open && <CompanySheet c={open} onClose={() => setOpen(null)} onPosted={refreshCommunity} />}
+      {open && (
+        <CompanySheet
+          c={open}
+          onClose={() => setOpen(null)}
+          onPosted={refreshCommunity}
+          progress={{
+            counts: pCounts[open.id ?? ''],
+            mine: myStages[open.id ?? ''],
+            canSet: canProgress,
+            signedInWrong: Boolean(session && !canProgress),
+            onChanged: refreshProgress,
+          }}
+        />
+      )}
       {submitting && <SubmitDrive onClose={() => setSubmitting(false)} />}
     </div>
   );
 }
 
-function DriveCard({ c, n, onOpen }: { c: Company; n: number; onOpen: (c: Company) => void }) {
+function DriveCard({ c, n, onOpen, funnel }: { c: Company; n: number; onOpen: (c: Company) => void; funnel?: Counts }) {
   const ctc = ctcLabel(c);
   const bad = c.tags.includes('ghosted') || c.tags.includes('stopped');
   const tone = bad ? 'tone-rose dim' : c.tags.includes('gold') ? 'tone-lav' : (c.ctcMax ?? 0) >= 15 ? 'tone-sage' : '';
@@ -498,6 +545,11 @@ function DriveCard({ c, n, onOpen }: { c: Company; n: number; onOpen: (c: Compan
         {ctc ? <span className="ctc">{ctc}</span> : c.stipendMax ? null : <span className="ctc none">{c.ctc_raw && c.ctc_raw.length < 28 ? c.ctc_raw : 'CTC not shared'}</span>}
         {c.stipendMax && <span className={ctc ? 'stipend' : 'ctc'}>{fmtStipend(c.stipendMax)}{ctc ? ' stipend' : ''}</span>}
       </div>
+      {funnel && funnel.applied > 0 && (
+        <div className="card-extra">
+          <FunnelMini c={funnel} />
+        </div>
+      )}
       <div className="card-foot">
         <TagList tags={c.tags} max={3} />
         <span style={{ display: 'flex', gap: 10 }}>
@@ -509,13 +561,13 @@ function DriveCard({ c, n, onOpen }: { c: Company; n: number; onOpen: (c: Compan
   );
 }
 
-function DriveTable({ list, counts, onOpen }: { list: Company[]; counts: Record<string, number>; onOpen: (c: Company) => void }) {
+function DriveTable({ list, counts, onOpen, funnels }: { list: Company[]; counts: Record<string, number>; onOpen: (c: Company) => void; funnels: Record<string, Counts> }) {
   return (
     <div className="table-wrap">
       <table className="drives">
         <thead>
           <tr>
-            <th>Company</th><th>Date</th><th>Role</th><th>CTC</th><th>Stipend</th><th>Intake</th><th>Flags</th><th aria-label="Experiences" />
+            <th>Company</th><th>Date</th><th>Role</th><th>CTC</th><th>Stipend</th><th>Intake</th><th>Batch</th><th>Flags</th><th aria-label="Experiences" />
           </tr>
         </thead>
         <tbody>
@@ -527,6 +579,7 @@ function DriveTable({ list, counts, onOpen }: { list: Company[]; counts: Record<
               <td className="num">{ctcLabel(c) ?? '—'}</td>
               <td className="num">{c.stipendMax ? fmtStipend(c.stipendMax) : '—'}</td>
               <td className="num">{c.intake ?? (c.intakeLabel || '—')}</td>
+              <td className="num">{funnels[c.id ?? '']?.applied ? `${funnels[c.id!].applied} → ${funnels[c.id!].shortlisted} → ${funnels[c.id!].offers}` : '—'}</td>
               <td><TagList tags={c.tags} max={2} /></td>
               <td className="num">{counts[c.id ?? ''] ? <span className="meta-mini"><Icon name="chat" size={14} />{counts[c.id!]}</span> : ''}</td>
             </tr>

@@ -1,18 +1,38 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { CHAT_DOMAIN, supabase } from '../lib/supabase';
+import { errText, signInWithCollegeGoogle } from '../lib/auth';
+import { doxxReason } from '../lib/filters';
+import { slug } from '../lib/slug';
 import { Icon } from './ui';
 
-type Msg = { id: number; alias: string; body: string; reply_to: number | null; is_admin?: boolean; created_at: string };
+type Msg = {
+  id: number;
+  alias: string;
+  body: string;
+  reply_to: number | null;
+  is_admin?: boolean;
+  channel?: string;
+  reactions?: Record<string, number>;
+  hidden?: boolean;
+  created_at: string;
+};
 type Profile = { alias: string; banned: boolean; is_admin?: boolean };
 
 const PAGE = 60;
-const RETURN_KEY = 'tea:return';
+const EMOJIS = ['👍', '💀', '☕'] as const;
 const AVATAR_BG = ['#e3e2f7', '#e2e6cf', '#f2cfcf', '#d4ecf7', '#c7c4ee', '#c9d0a6', '#e3a3a6', '#b9c9d4'];
+const SEEN_KEY = 'tea:seen';
 
 const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7);
 const initials = (alias: string) => alias.split(' ').slice(0, 2).map((w) => w[0]).join('');
 const ModTag = () => <span className="mod-tag" title="Moderator">MOD</span>;
+
+/** Open a company channel from anywhere on the page (e.g. "Discuss in #wayfair"). */
+export function openTeaChannel(companyName: string) {
+  window.dispatchEvent(new CustomEvent('tea:open', { detail: slug(companyName) }));
+  document.getElementById('tea')?.scrollIntoView({ behavior: 'smooth' });
+}
 
 function clock(iso: string) {
   const d = new Date(iso);
@@ -31,38 +51,60 @@ function Linkified({ text }: { text: string }) {
   );
 }
 
-function errText(e: unknown) {
-  const m = (e as { message?: string })?.message ?? String(e);
-  return m.replace(/^.*?: /, '').trim() || 'Something went wrong';
+function loadSeen(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(SEEN_KEY) || '{}');
+  } catch {
+    return {};
+  }
 }
 
-export function Tea() {
-  const [session, setSession] = useState<Session | null>(null);
+export function Tea({ session, companyNames, upcomingNames }: { session: Session | null; companyNames: string[]; upcomingNames: string[] }) {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [notAllowed, setNotAllowed] = useState(false);
+  const [channel, setChannel] = useState('general');
   const [msgs, setMsgs] = useState<Msg[] | null>(null);
   const [hasOlder, setHasOlder] = useState(false);
+  const [mine, setMine] = useState<Set<string>>(new Set()); // `${id}:${emoji}` I reacted with
+  const [active, setActive] = useState<{ channel: string; last: number }[]>([]);
+  const [opened, setOpened] = useState<string[]>([]);
+  const [unread, setUnread] = useState<Record<string, number>>({});
+  const [picker, setPicker] = useState(false);
+  const [pickQ, setPickQ] = useState('');
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   const [err, setErr] = useState('');
+  const [toast, setToast] = useState('');
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(0);
-  const [notAllowed, setNotAllowed] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const channelRef = useRef(channel);
+  channelRef.current = channel;
 
-  // ── auth ──
-  useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => data.subscription.unsubscribe();
-  }, []);
+  // slug → display name
+  const names = useMemo(() => {
+    const m = new Map<string, string>([['general', 'general']]);
+    for (const n of [...companyNames, ...upcomingNames]) if (!m.has(slug(n))) m.set(slug(n), n.trim());
+    return m;
+  }, [companyNames, upcomingNames]);
 
+  // channel tabs: general, opened ones, upcoming drives, recently active
+  const tabs = useMemo(() => {
+    const out: string[] = ['general'];
+    const add = (s: string) => s && names.has(s) && !out.includes(s) && out.push(s);
+    opened.forEach(add);
+    upcomingNames.map(slug).forEach(add);
+    active.map((a) => a.channel).forEach(add);
+    if (!out.includes(channel)) out.splice(1, 0, channel);
+    return out.slice(0, 14);
+  }, [opened, upcomingNames, active, channel, names]);
+
+  // ── profile ──
   useEffect(() => {
     setNotAllowed(false);
     if (!supabase || !session) return setProfile(null);
-    // The database decides who may chat: @bmsit.in Google accounts, or anyone on the admin list.
     supabase.rpc('my_chat_profile').then(({ data, error }) => {
       if (error) {
         setProfile(null);
@@ -73,35 +115,104 @@ export function Tea() {
         setProfile(data as Profile);
       }
     });
-    try {
-      if (localStorage.getItem(RETURN_KEY)) {
-        localStorage.removeItem(RETURN_KEY);
-        setTimeout(() => document.getElementById('tea')?.scrollIntoView({ behavior: 'smooth' }), 300);
-      }
-    } catch {
-      /* storage blocked */
-    }
   }, [session]);
 
-  // ── messages + realtime ──
+  // ── active channels ──
+  const loadActive = useCallback(() => {
+    if (!supabase) return;
+    supabase.rpc('chat_channels').then(({ data }) => {
+      const rows = ((data ?? []) as { channel: string; last_at: string }[]).map((r) => ({ channel: r.channel, last: Date.parse(r.last_at) }));
+      setActive(rows);
+      const seen = loadSeen();
+      setUnread((u) => {
+        const next = { ...u };
+        for (const r of rows) if (r.channel !== channelRef.current && r.last > (seen[r.channel] ?? 0)) next[r.channel] = Math.max(next[r.channel] ?? 0, 1);
+        return next;
+      });
+    });
+  }, []);
+  useEffect(loadActive, [loadActive]);
+
+  // ── "Discuss in #company" from elsewhere on the page ──
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const s = (e as CustomEvent<string>).detail;
+      if (!s) return;
+      setOpened((o) => (o.includes(s) ? o : [s, ...o]));
+      setChannel(s);
+    };
+    window.addEventListener('tea:open', onOpen);
+    return () => window.removeEventListener('tea:open', onOpen);
+  }, []);
+
+  const markSeen = (ch: string) => {
+    try {
+      const seen = loadSeen();
+      seen[ch] = Date.now();
+      localStorage.setItem(SEEN_KEY, JSON.stringify(seen));
+    } catch {
+      /* ignore */
+    }
+    setUnread((u) => ({ ...u, [ch]: 0 }));
+  };
+
+  // ── messages for the current channel ──
   useEffect(() => {
     if (!supabase) return;
-    const sb = supabase;
-    sb.from('chat_messages')
+    setMsgs(null);
+    setReplyTo(null);
+    stick.current = true;
+    markSeen(channel);
+    supabase
+      .from('chat_messages')
       .select('*')
+      .eq('channel', channel)
       .order('id', { ascending: false })
       .limit(PAGE)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        // before patch 004 there is no channel column: fall back to everything in "general"
+        if (error && channel === 'general') {
+          supabase!.from('chat_messages').select('*').order('id', { ascending: false }).limit(PAGE).then(({ data: d2 }) => {
+            setMsgs(((d2 ?? []) as Msg[]).reverse());
+          });
+          return;
+        }
         const rows = ((data ?? []) as Msg[]).reverse();
         setMsgs(rows);
         setHasOlder(rows.length === PAGE);
       });
+  }, [channel]);
 
+  // which reactions are mine (for highlighted pills)
+  useEffect(() => {
+    if (!supabase || !profile || !msgs?.length) return;
+    supabase.rpc('my_reactions', { p_ids: msgs.map((m) => m.id) }).then(({ data }) => {
+      setMine(new Set(((data ?? []) as { message_id: number; emoji: string }[]).map((r) => `${r.message_id}:${r.emoji}`)));
+    });
+    // only when the loaded set changes size (new channel / older page), not on every reaction
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, msgs?.length, channel]);
+
+  // ── realtime ──
+  useEffect(() => {
+    if (!supabase) return;
+    const sb = supabase;
     const ch = sb
       .channel('placementea', { config: { presence: { key: crypto.randomUUID?.() ?? String(Math.random()) } } })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => {
         const m = p.new as Msg;
-        setMsgs((cur) => (cur && !cur.some((x) => x.id === m.id) ? [...cur, m] : cur));
+        const c = m.channel ?? 'general';
+        if (c === channelRef.current) {
+          setMsgs((cur) => (cur && !cur.some((x) => x.id === m.id) ? [...cur, m] : cur));
+          markSeen(c);
+        } else {
+          setUnread((u) => ({ ...u, [c]: (u[c] ?? 0) + 1 }));
+          setActive((a) => [{ channel: c, last: Date.now() }, ...a.filter((x) => x.channel !== c)]);
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages' }, (p) => {
+        const m = p.new as Msg;
+        setMsgs((cur) => cur?.map((x) => (x.id === m.id ? { ...x, ...m } : x)) ?? cur);
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages' }, (p) => {
         const id = (p.old as { id?: number }).id;
@@ -116,7 +227,6 @@ export function Tea() {
     };
   }, []);
 
-  // keep the view pinned to the newest message unless the reader scrolled up
   useLayoutEffect(() => {
     const el = listRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
@@ -131,39 +241,38 @@ export function Tea() {
     if (!supabase || !msgs?.length) return;
     const el = listRef.current;
     const before = el?.scrollHeight ?? 0;
-    const { data } = await supabase.from('chat_messages').select('*').lt('id', msgs[0].id).order('id', { ascending: false }).limit(PAGE);
+    const { data } = await supabase.from('chat_messages').select('*').eq('channel', channel).lt('id', msgs[0].id).order('id', { ascending: false }).limit(PAGE);
     const older = ((data ?? []) as Msg[]).reverse();
     stick.current = false;
     setMsgs((cur) => [...older, ...(cur ?? [])]);
     setHasOlder(older.length === PAGE);
     requestAnimationFrame(() => el && (el.scrollTop = el.scrollHeight - before));
-  }, [msgs]);
+  }, [msgs, channel]);
+
+  const flash = (t: string) => {
+    setToast(t);
+    setTimeout(() => setToast(''), 2500);
+  };
 
   async function signIn() {
-    if (!supabase) return;
     try {
-      localStorage.setItem(RETURN_KEY, '1');
-    } catch {
-      /* ignore */
+      await signInWithCollegeGoogle('tea');
+    } catch (e) {
+      setErr(errText(e));
     }
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/`,
-        queryParams: { hd: CHAT_DOMAIN, prompt: 'select_account' },
-      },
-    });
-    if (error) setErr(errText(error));
   }
+
+  const warn = doxxReason(text);
 
   async function send(e?: FormEvent) {
     e?.preventDefault();
     if (!supabase || busy) return;
     const body = text.trim();
     if (!body) return;
+    if (warn) return setErr(`Remove ${warn} first. placemenTEA is anonymous.`);
     setBusy(true);
     setErr('');
-    const { data, error } = await supabase.rpc('post_chat', { p_body: body, p_reply_to: replyTo?.id ?? null });
+    const { data, error } = await supabase.rpc('post_chat', { p_body: body, p_reply_to: replyTo?.id ?? null, p_channel: channel });
     setBusy(false);
     if (error) return setErr(errText(error));
     const m = data as Msg;
@@ -171,7 +280,38 @@ export function Tea() {
     setMsgs((cur) => (cur && !cur.some((x) => x.id === m.id) ? [...cur, m] : cur));
     setText('');
     setReplyTo(null);
+    if (!active.some((a) => a.channel === channel)) loadActive();
     inputRef.current?.focus();
+  }
+
+  async function react(m: Msg, emoji: string) {
+    if (!supabase || !profile) return flash('Sign in to react');
+    const key = `${m.id}:${emoji}`;
+    const had = mine.has(key);
+    // optimistic
+    setMine((s) => {
+      const n = new Set(s);
+      had ? n.delete(key) : n.add(key);
+      return n;
+    });
+    const { data, error } = await supabase.rpc('toggle_reaction', { p_message: m.id, p_emoji: emoji });
+    if (error) {
+      setMine((s) => {
+        const n = new Set(s);
+        had ? n.add(key) : n.delete(key);
+        return n;
+      });
+      return flash(errText(error));
+    }
+    setMsgs((cur) => cur?.map((x) => (x.id === m.id ? { ...x, reactions: data as Record<string, number> } : x)) ?? cur);
+  }
+
+  async function report(m: Msg) {
+    if (!supabase || !profile) return flash('Sign in to report');
+    const reason = window.prompt(`Report this message from ${m.alias}?\nOptional: why? (spam, doxxing, abuse…)`, '');
+    if (reason === null) return;
+    const { error } = await supabase.rpc('report_chat', { p_message: m.id, p_reason: reason });
+    flash(error ? errText(error) : 'Reported. Mods will take a look. Thanks!');
   }
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -184,6 +324,11 @@ export function Tea() {
   const byId = new Map((msgs ?? []).map((m) => [m.id, m]));
   const wrongAccount = Boolean(session && notAllowed);
   const canChat = Boolean(profile && !profile.banned);
+  const label = (s: string) => names.get(s) ?? s;
+  const pickList = useMemo(() => {
+    const q = pickQ.trim().toLowerCase();
+    return [...names.entries()].filter(([s, n]) => s !== 'general' && (!q || n.toLowerCase().includes(q))).slice(0, 8);
+  }, [names, pickQ]);
 
   return (
     <div className="tea-grid">
@@ -240,30 +385,56 @@ export function Tea() {
 
         <ul className="tea-rules">
           <li>Spill the tea, not people's names: no students, recruiters or faculty.</li>
-          <li>No leaking live test papers. Discuss after the drive.</li>
-          <li>Mods can delete messages and ban aliases.</li>
+          <li>Emails, phone numbers and USNs are blocked automatically. Swear words get masked.</li>
+          <li>Report anything sketchy. 3 reports hide a message until a mod checks it.</li>
           <li>Others only ever see your alias. The site never shows who's behind one, but the project owner could technically look it up in the database, so don't post anything you'd regret.</li>
         </ul>
       </aside>
 
       <div className="tea-chat">
-        <div className="tea-list" ref={listRef} onScroll={onScroll} aria-live="polite" aria-label="placemenTEA messages">
+        <div className="tea-channels" role="tablist" aria-label="Channels">
+          {tabs.map((s) => (
+            <button key={s} role="tab" aria-selected={s === channel} className={`tea-ch${s === channel ? ' on' : ''}`} onClick={() => setChannel(s)}>
+              #{s === 'general' ? 'general' : label(s).toLowerCase()}
+              {s !== channel && (unread[s] ?? 0) > 0 && <span className="tea-unread" aria-label="new messages" />}
+            </button>
+          ))}
+          <div className="tea-pick">
+            <button className="tea-ch add" onClick={() => setPicker((v) => !v)} aria-expanded={picker} aria-label="Open a company channel">+ company</button>
+            {picker && (
+              <div className="tea-pick-pop">
+                <input autoFocus value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder="Search company…" aria-label="Search company channel" />
+                {pickList.map(([s, n]) => (
+                  <button key={s} onClick={() => { setOpened((o) => (o.includes(s) ? o : [s, ...o])); setChannel(s); setPicker(false); setPickQ(''); }}>
+                    #{n.toLowerCase()}
+                  </button>
+                ))}
+                {pickList.length === 0 && <span className="tea-note">No match</span>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="tea-list" ref={listRef} onScroll={onScroll} aria-live="polite" aria-label={`#${label(channel)} messages`}>
           {hasOlder && (
             <div className="tea-older"><button className="chip" onClick={loadOlder}>Load older messages</button></div>
           )}
           {msgs === null ? (
             <div className="tea-empty">{supabase ? 'Brewing…' : 'Offline'}</div>
           ) : msgs.length === 0 ? (
-            <div className="tea-empty">The kettle's on. Be the first to spill something ☕</div>
+            <div className="tea-empty">
+              {channel === 'general' ? "The kettle's on. Be the first to spill something ☕" : `Nothing in #${label(channel).toLowerCase()} yet. Got intel on ${label(channel)}? Start it.`}
+            </div>
           ) : (
             msgs.map((m, i) => {
-              const mine = m.alias === profile?.alias;
+              const own = m.alias === profile?.alias;
               const prev = msgs[i - 1];
-              const grouped = prev && prev.alias === m.alias && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60_000 && !m.reply_to;
+              const grouped = prev && prev.alias === m.alias && Date.parse(m.created_at) - Date.parse(prev.created_at) < 5 * 60_000 && !m.reply_to;
               const parent = m.reply_to ? byId.get(m.reply_to) : null;
+              const rx = m.reactions ?? {};
               return (
-                <div key={m.id} className={`tea-msg${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}${m.is_admin ? ' mod' : ''}`}>
-                  {!mine && (
+                <div key={m.id} className={`tea-msg${own ? ' mine' : ''}${grouped ? ' grouped' : ''}${m.is_admin ? ' mod' : ''}`}>
+                  {!own && (
                     <span className="av" style={{ background: AVATAR_BG[Math.abs(hash(m.alias)) % AVATAR_BG.length], visibility: grouped ? 'hidden' : 'visible' }}>
                       {initials(m.alias)}
                     </span>
@@ -271,21 +442,39 @@ export function Tea() {
                   <div className="tea-bubble-wrap">
                     {!grouped && (
                       <div className="tea-meta">
-                        <b>{mine ? 'You' : m.alias}</b>{m.is_admin && <ModTag />} <span>{clock(m.created_at)}</span>
+                        <b>{own ? 'You' : m.alias}</b>{m.is_admin && <ModTag />} <span>{clock(m.created_at)}</span>
                       </div>
                     )}
-                    <div className="tea-bubble">
-                      {m.reply_to && (
-                        <div className="tea-quote">
-                          {parent ? <><b>{parent.alias}</b>{parent.is_admin && ' (MOD)'} {parent.body.slice(0, 90)}{parent.body.length > 90 ? '…' : ''}</> : <i>earlier message</i>}
-                        </div>
-                      )}
-                      <Linkified text={m.body} />
-                    </div>
-                    {canChat && (
-                      <button className="tea-reply" onClick={() => { setReplyTo(m); inputRef.current?.focus(); }} aria-label={`Reply to ${m.alias}`}>
-                        Reply
-                      </button>
+                    {m.hidden ? (
+                      <div className="tea-bubble hidden-msg">Hidden after reports. A mod will review it.</div>
+                    ) : (
+                      <div className="tea-bubble">
+                        {m.reply_to && (
+                          <div className="tea-quote">
+                            {parent ? <><b>{parent.alias}</b>{parent.is_admin && ' (MOD)'} {parent.body.slice(0, 90)}{parent.body.length > 90 ? '…' : ''}</> : <i>earlier message</i>}
+                          </div>
+                        )}
+                        <Linkified text={m.body} />
+                      </div>
+                    )}
+                    {!m.hidden && (
+                      <div className="tea-rx">
+                        {EMOJIS.map((e) => {
+                          const n = rx[e] ?? 0;
+                          const on = mine.has(`${m.id}:${e}`);
+                          return (
+                            <button key={e} className={`rx${n ? '' : ' zero'}${on ? ' on' : ''}`} onClick={() => react(m, e)} aria-pressed={on} aria-label={`${e} ${n}`}>
+                              {e}{n > 0 && <span>{n}</span>}
+                            </button>
+                          );
+                        })}
+                        {canChat && (
+                          <>
+                            <button className="tea-act" onClick={() => { setReplyTo(m); inputRef.current?.focus(); }}>Reply</button>
+                            {!own && <button className="tea-act" onClick={() => report(m)}>Report</button>}
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -293,6 +482,8 @@ export function Tea() {
             })
           )}
         </div>
+
+        {toast && <div className="tea-toast" role="status">{toast}</div>}
 
         {canChat ? (
           <form className="tea-compose" onSubmit={send}>
@@ -302,19 +493,20 @@ export function Tea() {
                 <button type="button" onClick={() => setReplyTo(null)} aria-label="Cancel reply"><Icon name="x" size={14} /></button>
               </div>
             )}
+            {warn && <div className="tea-err">Looks like this has {warn}. Remove it to keep everyone anonymous.</div>}
             {err && <div className="tea-err">{err}</div>}
             <div className="tea-input-row">
               <textarea
                 ref={inputRef}
                 value={text}
-                onChange={(e) => setText(e.target.value.slice(0, 500))}
+                onChange={(e) => { setText(e.target.value.slice(0, 500)); setErr(''); }}
                 onKeyDown={onKey}
-                placeholder="Spill the tea…"
+                placeholder={`Message #${label(channel).toLowerCase()}`}
                 title="Enter to send, Shift+Enter for a new line"
                 rows={1}
                 aria-label="Message"
               />
-              <button className="tea-send" disabled={busy || !text.trim()} aria-label="Send">
+              <button className="tea-send" disabled={busy || !text.trim() || Boolean(warn)} aria-label="Send">
                 <Icon name="arrow" size={20} />
               </button>
             </div>
@@ -322,7 +514,7 @@ export function Tea() {
           </form>
         ) : (
           <div className="tea-locked">
-            {err ? <span className="tea-err">{err}</span> : <span>Read freely. Sign in with your @{CHAT_DOMAIN} Google account to post.</span>}
+            {err ? <span className="tea-err">{err}</span> : <span>Read freely. Sign in with your @{CHAT_DOMAIN} Google account to post, react or report.</span>}
           </div>
         )}
       </div>
