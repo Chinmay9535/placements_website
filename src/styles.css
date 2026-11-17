@@ -332,6 +332,31 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tea-msg.mod.mine .tea-bubble { box-shadow: inset 0 0 0 2px #c9d0a6; }
 .tea-locked { border-top: 1px solid rgba(244, 244, 244, 0.1); padding: 18px; text-align: center; font-size: 14px; color: rgba(244, 244, 244, 0.7); }
 
+/* ───────── upcoming ───────── */
+.up-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.up-card { display: grid; grid-template-columns: 76px 1fr; gap: 18px; background: var(--paper); border-radius: var(--radius-lg); padding: 18px; }
+.up-date { background: var(--lav); border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 4px; align-self: start; min-height: 96px; }
+.up-date.tba { background: var(--white); border: 1px dashed var(--line-strong); }
+.up-date .mon { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500; }
+.up-date .day { font-size: 34px; line-height: 1; font-weight: 700; letter-spacing: -0.03em; margin: 2px 0; }
+.up-date.tba .day { font-size: 18px; color: var(--muted); }
+.up-date .dow { font-size: 12px; color: var(--muted); }
+.up-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.up-body h3 { margin: 4px 0 0; font-size: 22px; line-height: 1.1; }
+.up-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 999px; background: var(--sage); }
+.up-chip.urgent { background: #fde1df; color: var(--bad); }
+.up-role { font-size: 14px; color: var(--ink-2); }
+.up-pay { font-size: 18px; font-weight: 500; }
+.up-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 4px 0 0; font-size: 13px; }
+.up-facts dt { color: var(--muted); }
+.up-facts dd { margin: 0; word-break: break-word; }
+.up-notes { font-size: 13px; }
+.up-notes summary { cursor: pointer; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; }
+.up-notes p { white-space: pre-wrap; margin: 6px 0 0; color: var(--ink-2); }
+.up-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.up-empty { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; background: var(--paper); border-radius: var(--radius-lg); padding: 20px 24px; font-size: 15px; }
+.up-empty span { color: var(--muted); }
+
 /* ───────── footer (geometric) ───────── */
 .footer { background: var(--page); border-radius: var(--radius-xl); position: relative; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.5); }
 .footer-art { position: absolute; inset: 0; pointer-events: none; }
@@ -435,6 +460,8 @@ td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
   .nav-links { display: none; }
   .chip-divider { display: none; }
   .tea-chat { height: 560px; }
+  .up-grid { grid-template-columns: 1fr; }
+  .up-card { grid-template-columns: 62px 1fr; gap: 14px; padding: 14px; }
   .tea-cup { display: none; }
   .tea-side { padding: 16px; gap: 12px; }
   .tea-list { padding: 14px; }

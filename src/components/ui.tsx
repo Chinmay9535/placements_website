@@ -23,6 +23,7 @@ export function Nav({ onSubmit, admin }: { onSubmit?: () => void; admin?: boolea
       </a>
       {!admin && (
         <div className="nav-links">
+          <a href="#upcoming">Upcoming</a>
           <a href="#drives">Drives</a>
           <a href="#insights">Insights</a>
           <a href="#experiences">Experiences</a>

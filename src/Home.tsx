@@ -7,6 +7,7 @@ import { BarChart } from './components/BarChart';
 import { CompanySheet } from './components/CompanySheet';
 import { SubmitDrive } from './components/SubmitDrive';
 import { Tea } from './components/Tea';
+import { Upcoming } from './components/Upcoming';
 
 const WHATSAPP_URL = 'https://chat.whatsapp.com/Cmz2kYJEMv9EpmjunbgIYL';
 
@@ -182,6 +183,20 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* ───────── UPCOMING ───────── */}
+      <section className="frame white" id="upcoming">
+        <div className="inner">
+          <div className="section-head">
+            <h2 className="h2">Coming up<br /><em>next on campus</em></h2>
+            <div className="aside-italic">
+              Don't miss the<br />registration deadline
+              <small>Announced drives with countdowns. Add them straight to your calendar.</small>
+            </div>
+          </div>
+          <Upcoming onSubmit={() => setSubmitting(true)} />
+        </div>
+      </section>
 
       {/* ───────── STATS ───────── */}
       <section className="frame white reveal">

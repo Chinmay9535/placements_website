@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, SHEET_URL } from './lib/supabase';
-import { fetchSheetRows, OUTCOMES, type Experience, type Submission } from './lib/data';
+import { fetchSheetRows, OUTCOMES, type Experience, type Submission, type Upcoming } from './lib/data';
 import type { CompanyRow } from './lib/parse';
 import { Modal, Nav, timeAgo } from './components/ui';
+import { UpcomingEditor, UpcomingTab, type UpcomingDraft } from './components/UpcomingAdmin';
 
-type Tab = 'drives' | 'submissions' | 'experiences' | 'chat' | 'sync';
+type Tab = 'upcoming' | 'drives' | 'submissions' | 'experiences' | 'chat' | 'sync';
 type ChatMsg = { id: number; alias: string; body: string; created_at: string };
 const blank: CompanyRow = { name: '', date_raw: '', role: '', ctc_raw: '', intake_raw: '', rounds: '', details: '', position: 0 };
 
@@ -76,7 +77,7 @@ function Login() {
 }
 
 function Dashboard({ email }: { email: string }) {
-  const [tab, setTab] = useState<Tab>('drives');
+  const [tab, setTab] = useState<Tab>('upcoming');
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [subs, setSubs] = useState<Submission[]>([]);
   const [exps, setExps] = useState<Experience[]>([]);
@@ -84,17 +85,21 @@ function Dashboard({ email }: { email: string }) {
   const [banned, setBanned] = useState<string[]>([]);
   const [editing, setEditing] = useState<CompanyRow | null>(null);
   const [fromSub, setFromSub] = useState<string | null>(null);
+  const [upcoming, setUpcoming] = useState<Upcoming[]>([]);
+  const [upDraft, setUpDraft] = useState<UpcomingDraft | null>(null);
   const [q, setQ] = useState('');
 
   const reload = useCallback(async () => {
     const sb = supabase!;
-    const [c, s, x, m, b] = await Promise.all([
+    const [c, s, x, m, b, u] = await Promise.all([
       sb.from('companies').select('*').order('position', { ascending: false }),
       sb.from('submissions').select('*').order('created_at', { ascending: false }).limit(200),
       sb.from('experiences').select('*').order('created_at', { ascending: false }).limit(200),
       sb.from('chat_messages').select('*').order('id', { ascending: false }).limit(200),
       sb.rpc('admin_banned_aliases'),
+      sb.from('upcoming_drives').select('*'),
     ]);
+    setUpcoming((u.data ?? []) as Upcoming[]);
     setChat((m.data ?? []) as ChatMsg[]);
     setBanned(((b.data ?? []) as unknown[]).map((r) => (typeof r === 'string' ? r : Object.values(r as object)[0] as string)));
     setCompanies((c.data ?? []) as CompanyRow[]);
@@ -146,12 +151,15 @@ function Dashboard({ email }: { email: string }) {
         </div>
       </div>
       <div className="seg" style={{ marginBottom: 20, flexWrap: 'wrap' }}>
+        <button aria-pressed={tab === 'upcoming'} onClick={() => setTab('upcoming')}>Upcoming ({upcoming.length})</button>
         <button aria-pressed={tab === 'drives'} onClick={() => setTab('drives')}>Drives ({companies.length})</button>
         <button aria-pressed={tab === 'submissions'} onClick={() => setTab('submissions')}>Submissions ({pending.length})</button>
         <button aria-pressed={tab === 'experiences'} onClick={() => setTab('experiences')}>Experiences ({exps.length})</button>
         <button aria-pressed={tab === 'chat'} onClick={() => setTab('chat')}>placemenTEA ({chat.length})</button>
         <button aria-pressed={tab === 'sync'} onClick={() => setTab('sync')}>Sync sheet</button>
       </div>
+
+      {tab === 'upcoming' && <UpcomingTab items={upcoming} onEdit={(d) => { setFromSub(null); setUpDraft(d); }} onChanged={reload} />}
 
       {tab === 'drives' && (
         <div className="panel">
@@ -199,7 +207,11 @@ function Dashboard({ email }: { email: string }) {
                   <button className="btn sm dark" onClick={() => {
                     setFromSub(s.id);
                     setEditing({ ...blank, name: s.name, date_raw: s.date_raw, role: s.role, ctc_raw: s.ctc_raw, intake_raw: s.intake_raw, details: s.details });
-                  }}>Review &amp; publish</button>
+                  }}>Publish to drives</button>
+                  <button className="btn sm" onClick={() => {
+                    setFromSub(s.id);
+                    setUpDraft({ name: s.name, role: s.role, ctc_raw: s.ctc_raw, notes: [s.date_raw && `Date mentioned: ${s.date_raw}`, s.intake_raw && `Intake: ${s.intake_raw}`, s.details].filter(Boolean).join('\n') });
+                  }}>→ Upcoming</button>
                   <button className="btn sm ghost" onClick={() => setSubStatus(s.id, 'dismissed')}>Dismiss</button>
                 </div>
               )}
@@ -252,6 +264,19 @@ function Dashboard({ email }: { email: string }) {
       )}
 
       {tab === 'sync' && <Sync current={companies} onDone={reload} />}
+
+      {upDraft && (
+        <UpcomingEditor
+          draft={upDraft}
+          onClose={() => setUpDraft(null)}
+          onSaved={async () => {
+            if (fromSub) await supabase!.from('submissions').update({ status: 'approved' }).eq('id', fromSub);
+            setUpDraft(null);
+            setFromSub(null);
+            reload();
+          }}
+        />
+      )}
 
       {editing && (
         <EditDrive
