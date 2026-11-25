@@ -357,18 +357,39 @@ function EditDrive({ row, onClose, onSaved }: { row: CompanyRow; onClose: () => 
   );
 }
 
+const MAX_COMPANY_NAME_LENGTH = 120;
+
+function isValidCompanyName(name: string) {
+  const length = Array.from(name.trim()).length;
+  return length >= 1 && length <= MAX_COMPANY_NAME_LENGTH;
+}
+
 function Sync({ current, onDone }: { current: CompanyRow[]; onDone: () => void }) {
   const [rows, setRows] = useState<CompanyRow[] | null>(null);
+  const [correctedNames, setCorrectedNames] = useState<Record<number, string>>({});
   const [msg, setMsg] = useState<{ ok?: string; err?: string }>({});
   const [busy, setBusy] = useState(false);
+  const invalidRows = rows?.filter((row) => !isValidCompanyName(row.name)) ?? [];
+  const needsCorrection = invalidRows.some((row) => !isValidCompanyName(correctedNames[row.position] ?? ''));
+  const importRows = rows?.map((row) => {
+    const correctedName = correctedNames[row.position]?.trim();
+    if (!correctedName || !isValidCompanyName(correctedName)) return row;
+    return {
+      ...row,
+      name: correctedName,
+      rounds: [row.rounds, row.name].filter(Boolean).join('\n\n'),
+    };
+  });
   const sheetNow = current.filter((c) => c.source === 'sheet');
   const key = (c: CompanyRow) => `${c.name.trim().toLowerCase()}|${c.ctc_raw}|${c.date_raw}|${c.rounds}|${c.details}|${c.role}|${c.intake_raw}`;
   const before = new Set(sheetNow.map(key));
-  const changed = rows ? rows.filter((r) => !before.has(key(r))) : [];
+  const changed = importRows?.filter((row) => !before.has(key(row))) ?? [];
 
   async function preview() {
     setBusy(true);
     setMsg({});
+    setRows(null);
+    setCorrectedNames({});
     try {
       setRows(await fetchSheetRows());
     } catch (e) {
@@ -377,9 +398,9 @@ function Sync({ current, onDone }: { current: CompanyRow[]; onDone: () => void }
     setBusy(false);
   }
   async function apply() {
-    if (!rows) return;
+    if (!importRows || needsCorrection) return;
     setBusy(true);
-    const { data, error } = await supabase!.rpc('sync_sheet', { rows });
+    const { data, error } = await supabase!.rpc('sync_sheet', { rows: importRows });
     setBusy(false);
     if (error) return setMsg({ err: error.message });
     setMsg({ ok: `Synced ${data} rows from the sheet.` });
@@ -397,8 +418,36 @@ function Sync({ current, onDone }: { current: CompanyRow[]; onDone: () => void }
       </p>
       <div className="admin-actions">
         <button className="btn" onClick={preview} disabled={busy}>{busy && !rows ? 'Fetching…' : 'Fetch & preview'}</button>
-        {rows && <button className="btn dark" onClick={apply} disabled={busy}>Apply ({rows.length} rows in sheet)</button>}
+        {rows && <button className="btn dark" onClick={apply} disabled={busy || needsCorrection}>Apply ({rows.length} rows in sheet)</button>}
       </div>
+      {invalidRows.length > 0 && (
+        <div className="form" style={{ marginTop: 16 }}>
+          <p className="note">
+            Correct company names longer than {MAX_COMPANY_NAME_LENGTH} characters before applying.
+            The original text will be added to the drive’s rounds notes. These corrections only apply to this import.
+          </p>
+          {invalidRows.map((row) => (
+            <div key={row.position}>
+              <label>
+                Correct company name for {row.role || 'drive'} · {row.ctc_raw || 'compensation not listed'}
+                <input
+                  value={correctedNames[row.position] ?? ''}
+                  onChange={(event) => {
+                    const name = event.target.value;
+                    setCorrectedNames((names) => ({ ...names, [row.position]: name }));
+                  }}
+                  disabled={busy}
+                  aria-invalid={!isValidCompanyName(correctedNames[row.position] ?? '')}
+                />
+              </label>
+              <details className="note">
+                <summary>Original company cell</summary>
+                <p>{row.name}</p>
+              </details>
+            </div>
+          ))}
+        </div>
+      )}
       {rows && (
         <div style={{ marginTop: 16 }}>
           <p className="note">{changed.length} new or changed rows:</p>
